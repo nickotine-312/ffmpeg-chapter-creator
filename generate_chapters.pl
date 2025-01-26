@@ -4,16 +4,16 @@ use 5.010;
 use Data::Dumper;
 use Capture::Tiny qw/capture/;
 
-$removestr='text_to_remove_from_title';
-$dirpath='/home/nick/media/shows/';
+$removestr=' \[Dvdrip SAiNTS\]';
+$dirpath='/home/nick/media/shows/Sabrina The Teenage Witch/Season 1';
 opendir DIR,$dirpath;
 my @fname_list = readdir(DIR);
 close DIR;
 
 foreach $fname (@fname_list)
 {
-	@breaks = (); #Will include two entries for 1 and $length to make chapter parsing smoother in the generate_metadata subroutine.
-	push(@breaks, 1);
+	@breaks = ();
+	push(@breaks, 0);
 	next if $fname eq '.' || $fname eq '..';
 	say "###########################################################################################\n";
 	say "##### STARTING: $fname #####\n";
@@ -50,8 +50,25 @@ foreach $fname (@fname_list)
 	print("\nGenerating metadata file....\n");
 	$newname = $fname;
 	$newname =~ s/$removestr//;
+	$newname =~ s/\'//;
+	$newname =~ s/\"//;
 
-	generate_metadata($newname, \@breaks);
+	print("NEW NAME IS $newname\n");
+
+	if (scalar @breaks == 2)
+	{
+		print("No chapters found in $fname. File will not be renamed, and no metadata generated.");
+	}
+	else
+	{
+		generate_metadata($newname, \@breaks);
+		system("ffmpeg -i \"$dirpath\/$fname\" -map_metadata -1 -c:v copy -c:a copy \"NOMETA-$newname\"");
+		#system("ffmpeg -v quiet -i \"$dirpath\/$fname\" -i \"$newname.md\" -map_metadata 1 -codec copy \"$newname\"");
+		#system("ffmpeg -i \"$dirpath\/$fname-stripped\" -i \"$newname.md\" -c copy -map 0:a -map 0:v -map_chapters 1 \"$newname\"");
+		system("ffmpeg -i \"NOMETA-$newname\" -i \"$newname.md\" -c:v copy -c:a copy -map_metadata 1 -map_chapters 1 \"$newname\"");
+		#system("ffmpeg -v quiet -i \"$dirpath\/$fname\" -i \"$newname.md\" -map_metadata 1 -map_chapters 1 -codec copy \"$newname\"");
+	}
+
 	exit 0;
 }
 
@@ -64,17 +81,15 @@ sub generate_metadata
 
 	open $fh, '>', "$filename.md";
 	print {$fh} ";FFMETADATA1\n";
-	print {$fh} "title=$filename\n";
+	print {$fh} "title=TEST\n";#$filename\n";
 	print {$fh} "\n";
 
 	for(my $i = 0; $i < $#chapters; $i++)
 	{
 		print {$fh} "[CHAPTER]\n";
-		print {$fh} "TIMEBASE=1/1000\n";
+		print {$fh} "TIMEBASE=1/1\n";
 		print {$fh} "START=$chapters[$i]\n";
-		$nextchap = $chapters[$i+1] - 1;
-		print {$fh} "END=$nextchap\n";
-		print {$fh} "\n";
+		print {$fh} "END=$chapters[$i+1]\n";
 	}
 
 	close $fh;
