@@ -4,8 +4,8 @@ use 5.010;
 use Data::Dumper;
 use Capture::Tiny qw/capture/;
 
-$removestr=' \[Dvdrip SAiNTS\]';
-$dirpath='/home/nick/media/shows/Sabrina The Teenage Witch/Season 1';
+$removestr='text_to_remove';
+$dirpath='/home/nick/media/shows/';
 opendir DIR,$dirpath;
 my @fname_list = readdir(DIR);
 close DIR;
