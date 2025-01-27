@@ -1,7 +1,6 @@
 #!/usr/bin/env perl
 $| = 1;
 use 5.010;
-use Data::Dumper;
 use Capture::Tiny qw/capture/;
 
 $removestr='text_to_remove';
@@ -73,7 +72,7 @@ sub generate_metadata
 
 	open $fh, '>', "$filename.md";
 	print {$fh} ";FFMETADATA1\n";
-	print {$fh} "title=TEST\n";#$filename\n";
+	print {$fh} "title=$filename\n";
 	print {$fh} "\n";
 
 	for(my $i = 0; $i < $#chapters; $i++)

@@ -4,6 +4,4 @@ Used to automatically insert chapter metadata into video files using ffmpeg, for
 Originally this script identified the breaks by detecting silence, but there was too much ambiguity, so now it scans the file for black frames in the video. This is a more resource intensive operation, but it yields much more consistent results. 
 
 # TODO
-* Build episode-specific metadata file with chapters and title
-* Encode input file with that metadata file, using a name for the output file with any desired text (from above) removed. 
-
+* Update directory traversal to move through subdirectories too. 
