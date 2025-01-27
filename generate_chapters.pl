@@ -5,7 +5,7 @@ use Data::Dumper;
 use Capture::Tiny qw/capture/;
 
 $removestr='text_to_remove';
-$dirpath='/home/nick/media/shows/';
+$dirpath='/path/to/source/directory';
 opendir DIR,$dirpath;
 my @fname_list = readdir(DIR);
 close DIR;
@@ -53,8 +53,6 @@ foreach $fname (@fname_list)
 	$newname =~ s/\'//;
 	$newname =~ s/\"//;
 
-	print("NEW NAME IS $newname\n");
-
 	if (scalar @breaks == 2)
 	{
 		print("No chapters found in $fname. File will not be renamed, and no metadata generated.");
@@ -62,14 +60,8 @@ foreach $fname (@fname_list)
 	else
 	{
 		generate_metadata($newname, \@breaks);
-		system("ffmpeg -i \"$dirpath\/$fname\" -map_metadata -1 -c:v copy -c:a copy \"NOMETA-$newname\"");
-		#system("ffmpeg -v quiet -i \"$dirpath\/$fname\" -i \"$newname.md\" -map_metadata 1 -codec copy \"$newname\"");
-		#system("ffmpeg -i \"$dirpath\/$fname-stripped\" -i \"$newname.md\" -c copy -map 0:a -map 0:v -map_chapters 1 \"$newname\"");
-		system("ffmpeg -i \"NOMETA-$newname\" -i \"$newname.md\" -c:v copy -c:a copy -map_metadata 1 -map_chapters 1 \"$newname\"");
-		#system("ffmpeg -v quiet -i \"$dirpath\/$fname\" -i \"$newname.md\" -map_metadata 1 -map_chapters 1 -codec copy \"$newname\"");
+		system("ffmpeg -i \"$dirpath\/$fname\" -i \"$newname.md\" -codec copy -map_metadata 1 -map_chapters 1 \"$newname.mp4\"");
 	}
-
-	exit 0;
 }
 
 sub generate_metadata
