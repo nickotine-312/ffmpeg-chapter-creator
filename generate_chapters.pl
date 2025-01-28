@@ -3,7 +3,9 @@ $| = 1;
 use 5.010;
 use Capture::Tiny qw/capture/;
 
-$removestr='text_to_remove';
+$oldext='.avi'; #re-encoded as mp4 to include chapter metadata. Remove old file extensions. (Include even if source is MP4 - see code below.)
+$removestr='string_to_remove';
+
 $dirpath='/path/to/source/directory';
 opendir DIR,$dirpath;
 my @fname_list = readdir(DIR);
@@ -14,9 +16,9 @@ foreach $fname (@fname_list)
 	@breaks = ();
 	push(@breaks, 0);
 	next if $fname eq '.' || $fname eq '..';
-	say "###########################################################################################\n";
-	say "##### STARTING: $fname #####\n";
-	say "###########################################################################################\n";
+	print "###########################################################################################\n";
+	print "##### STARTING: $fname #####\n";
+	print "###########################################################################################\n";
 
 	my ($out, $err) = capture {
 		system("ffmpeg -i \"$dirpath/$fname\" -vf blackdetect=d=0.1:pix_th=.1 -f rawvideo -y /dev/null");
@@ -36,21 +38,24 @@ foreach $fname (@fname_list)
 
 		#Skip darkness if in first 5 minutes (theme song), less than 1 second (scene change), or within 4 minutes of end (credits)
 		next if $start < 360;
-        next if	$duration < 1.0; 
+		next if	$duration < 1.0; 
 		next if $length - $start < 300;
 		
 		print("Start: $start | End: $end | Duration $duration\n");
 		my $break = $start + (($end-$start)/2);
 		print("Proposed break time: $break\n");
-		push(@breaks, $break);
+		push(@breaks, $break*1000); #Chapter data cuts off decimal so we do 1000X and use 1/1000 Timebase
 	}
-	push(@breaks, $length);
+	push(@breaks, $length*1000);
 
 	print("\nGenerating metadata file....\n");
+	#Any other name translations needed should be done here. 
 	$newname = $fname;
 	$newname =~ s/$removestr//;
 	$newname =~ s/\'//;
 	$newname =~ s/\"//;
+	$newname =~ s/$oldext//;
+	$newname =~ s/\[([0-9]+)\-([0-9]+)\] (.*)/$3 - s$1e$2/; #Directory-specific transformation to enable ErsatzTV to parse season/episode data
 
 	if (scalar @breaks == 2)
 	{
@@ -59,7 +64,7 @@ foreach $fname (@fname_list)
 	else
 	{
 		generate_metadata($newname, \@breaks);
-		system("ffmpeg -i \"$dirpath\/$fname\" -i \"$newname.md\" -codec copy -map_metadata 1 -map_chapters 1 \"$newname.mp4\"");
+		system("ffmpeg -v quiet -i \"$dirpath\/$fname\" -i \"./md/$newname.md\" -codec copy -map_metadata 1 -map_chapters 1 \"./output/$newname.mp4\"");
 	}
 }
 
@@ -70,7 +75,7 @@ sub generate_metadata
 	
 	$num_chapters = scalar @chapters;
 
-	open $fh, '>', "$filename.md";
+	open $fh, '>', "./md/$filename.md";
 	print {$fh} ";FFMETADATA1\n";
 	print {$fh} "title=$filename\n";
 	print {$fh} "\n";
@@ -78,11 +83,10 @@ sub generate_metadata
 	for(my $i = 0; $i < $#chapters; $i++)
 	{
 		print {$fh} "[CHAPTER]\n";
-		print {$fh} "TIMEBASE=1/1\n";
+		print {$fh} "TIMEBASE=1/1000\n";
 		print {$fh} "START=$chapters[$i]\n";
 		print {$fh} "END=$chapters[$i+1]\n";
 	}
 
 	close $fh;
 }
-

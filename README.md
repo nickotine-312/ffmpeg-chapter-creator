@@ -4,6 +4,8 @@ Used to automatically insert chapter metadata into video files using ffmpeg, for
 Originally this script identified the breaks by detecting silence, but there was too much ambiguity, so now it scans the file for black frames in the video. This is a more resource intensive operation, but it yields much more consistent results. 
 
 # TODO
+* format strings for header to make output prettier.
+* Add subdirectories for metadata and new outputs, to keep things a bit cleaner. 
 * Strip old file extension before adding MP4
 * Can we clean up filenames more? 
 * Update directory traversal to move through subdirectories too. 
