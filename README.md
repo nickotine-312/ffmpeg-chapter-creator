@@ -6,6 +6,7 @@ Originally this script identified the breaks by detecting silence, but there was
 # Requirements
 
 Perl v5.010
+
 Capture::Tiny CPAN module installed
 
 Linux packages: `gcc` and `build-essential` (for CPAN), `ffmpeg` (only tested on ffmpeg 6.1.1)
@@ -21,6 +22,5 @@ At the top of the script are several variables that must be manually set:
 
 # TODO
 
-* format strings for header to make output prettier.
 * Update directory traversal to move through subdirectories too. 
 * Stretch goal would be to somehow query IMDb for episode summaries etc of the episodes we're scanning....

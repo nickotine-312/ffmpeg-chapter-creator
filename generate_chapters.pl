@@ -3,10 +3,10 @@ $| = 1;
 use 5.010;
 use Capture::Tiny qw/capture/;
 
-$oldext='.avi'; #re-encoded as mp4 to include chapter metadata. Remove old file extensions. (Include even if source is MP4 - see code below.)
-$removestr='string_to_remove';
+$oldext='.mkv'; #re-encoded as mp4 to include chapter metadata. Remove old file extensions. (Include even if source is MP4 - see code below.)
+$removestr='';
 
-$dirpath='/path/to/source/directory';
+$dirpath='';
 opendir DIR,$dirpath;
 my @fname_list = readdir(DIR);
 close DIR;
@@ -16,8 +16,12 @@ foreach $fname (@fname_list)
 	@breaks = ();
 	push(@breaks, 0);
 	next if $fname eq '.' || $fname eq '..';
+	my $padchar = '#';
+	my $padlen = (90 - length($fname)) / 2;
 	print "###########################################################################################\n";
-	print "##### STARTING: $fname #####\n";
+	my $paddedtitle = ($padchar x $padlen) . " " . $fname . " " . ($padchar x $padlen);
+	print "$paddedtitle\n";
+	#print "##### $fname #####\n";
 	print "###########################################################################################\n";
 
 	my ($out, $err) = capture {
@@ -30,6 +34,7 @@ foreach $fname (@fname_list)
 	#Convert carriage returns to newlines
 	$err =~ s/\r/\n/g;
 
+	$has_break = 0;
 	@lines = split(/\n/, $err);
 	foreach (@lines) {
 		#Parse the timestamp (in seconds) where blackness starts and ends, and how long it lasts
@@ -37,35 +42,39 @@ foreach $fname (@fname_list)
 		my ($start, $end, $duration) = ($1, $2, $3);
 
 		#Skip darkness if in first 5 minutes (theme song), less than 1 second (scene change), or within 4 minutes of end (credits)
-		next if $start < 360;
-		next if	$duration < 1.0; 
-		next if $length - $start < 300;
+		next if $start < 480;
+		next if	$duration < 0.251; 
+		next if $length - $start < 420;
+		next if ($start - ($breaks[-1]/1000) < 300); #Skip if we just flagged a commercial in the past 5 minutes.  
 		
 		print("Start: $start | End: $end | Duration $duration\n");
 		my $break = $start + (($end-$start)/2);
 		print("Proposed break time: $break\n");
 		push(@breaks, $break*1000); #Chapter data cuts off decimal so we do 1000X and use 1/1000 Timebase
+		$has_break = 1;
 	}
 	push(@breaks, $length*1000);
 
 	print("\nGenerating metadata file....\n");
 	#Any other name translations needed should be done here. 
 	$newname = $fname;
-	$newname =~ s/$removestr//;
+	$newname =~ s/^$removestr//;
 	$newname =~ s/\'//;
 	$newname =~ s/\"//;
 	$newname =~ s/$oldext//;
-	$newname =~ s/\[([0-9]+)\-([0-9]+)\] (.*)/$3 - s$1e$2/; #Directory-specific transformation to enable ErsatzTV to parse season/episode data
+	#$newname =~ s/([0-9]+)x([0-9]+) - (.*)/$3 - s$1e$2/; #Directory-specific transformation to enable ErsatzTV to parse season/episode data
 
 	if (scalar @breaks == 2)
 	{
-		print("No chapters found in $fname. File will not be renamed, and no metadata generated.");
+		print("No chapters found in $fname. File will be re-encoded without chapters.\n");
+		system("ffmpeg -v quiet -i \"$dirpath\/$fname\" -codec copy \"./output/$newname.mp4\"");
 	}
 	else
 	{
 		generate_metadata($newname, \@breaks);
 		system("ffmpeg -v quiet -i \"$dirpath\/$fname\" -i \"./md/$newname.md\" -codec copy -map_metadata 1 -map_chapters 1 \"./output/$newname.mp4\"");
 	}
+	print("\n");
 }
 
 sub generate_metadata
