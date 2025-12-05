@@ -6,23 +6,24 @@ use Capture::Tiny qw/capture/;
 $oldext='.mkv'; #re-encoded as mp4 to include chapter metadata. Remove old file extensions. (Include even if source is MP4 - see code below.)
 $removestr='';
 
-$dirpath='';
+$dirpath='/path/to/media';
 opendir DIR,$dirpath;
 my @fname_list = readdir(DIR);
 close DIR;
 
-foreach $fname (@fname_list)
+foreach $fname (sort { $a <=> $b } @fname_list)
 {
 	@breaks = ();
 	push(@breaks, 0);
 	next if $fname eq '.' || $fname eq '..';
 	my $padchar = '#';
-	my $padlen = (90 - length($fname)) / 2;
-	print "###########################################################################################\n";
-	my $paddedtitle = ($padchar x $padlen) . " " . $fname . " " . ($padchar x $padlen);
-	print "$paddedtitle\n";
-	#print "##### $fname #####\n";
-	print "###########################################################################################\n";
+	#128 instead of 130 to account for the two hardcoded spaces in $padded_title
+	my $padlen = (128 - length($fname)) / 2;
+	my $padded_title = ($padchar x ($padlen - ($padlen % 2))) . " " . $fname . " " . ($padchar x $padlen);
+
+	say ($padchar x 130);
+	say $padded_title;
+	say ($padchar x 130);
 
 	my ($out, $err) = capture {
 		system("ffmpeg -i \"$dirpath/$fname\" -vf blackdetect=d=0.1:pix_th=.1 -f rawvideo -y /dev/null");
@@ -34,7 +35,6 @@ foreach $fname (@fname_list)
 	#Convert carriage returns to newlines
 	$err =~ s/\r/\n/g;
 
-	$has_break = 0;
 	@lines = split(/\n/, $err);
 	foreach (@lines) {
 		#Parse the timestamp (in seconds) where blackness starts and ends, and how long it lasts
@@ -51,7 +51,6 @@ foreach $fname (@fname_list)
 		my $break = $start + (($end-$start)/2);
 		print("Proposed break time: $break\n");
 		push(@breaks, $break*1000); #Chapter data cuts off decimal so we do 1000X and use 1/1000 Timebase
-		$has_break = 1;
 	}
 	push(@breaks, $length*1000);
 
@@ -59,10 +58,12 @@ foreach $fname (@fname_list)
 	#Any other name translations needed should be done here. 
 	$newname = $fname;
 	$newname =~ s/^$removestr//;
-	$newname =~ s/\'//;
-	$newname =~ s/\"//;
+	$newname =~ s/\'//g;
+	$newname =~ s/\"//g;
 	$newname =~ s/$oldext//;
 	#$newname =~ s/([0-9]+)x([0-9]+) - (.*)/$3 - s$1e$2/; #Directory-specific transformation to enable ErsatzTV to parse season/episode data
+	print("    Name:     $newname.mp4\n");
+	print("    Chapters: " . join(', ', @breaks) . " \n");
 
 	if (scalar @breaks == 2)
 	{
