@@ -3,79 +3,100 @@ $| = 1;
 use 5.010;
 use Capture::Tiny qw/capture/;
 
-$oldext='.mkv'; #re-encoded as mp4 to include chapter metadata. Remove old file extensions. (Include even if source is MP4 - see code below.)
+$oldext='.mp4'; #re-encoded as mp4 to include chapter metadata. Remove old file extensions. (Include even if source is MP4 - see code below.)
 $removestr='';
 
-$dirpath='/path/to/media';
-opendir DIR,$dirpath;
-my @fname_list = readdir(DIR);
-close DIR;
+$root_path="/path/to/media";
+opendir RDIR,$root_path;
+my @subdir_list = readdir(RDIR);
+close RDIR;
 
-foreach $fname (sort { $a <=> $b } @fname_list)
+$start_pct=0;
+$total_pct=`find '$root_path' -type f | wc -l`;
+
+foreach $sname (sort @subdir_list) #{ $a <=> $b } @subdir_list)
 {
-	@breaks = ();
-	push(@breaks, 0);
-	next if $fname eq '.' || $fname eq '..';
-	my $padchar = '#';
-	#128 instead of 130 to account for the two hardcoded spaces in $padded_title
-	my $padlen = (128 - length($fname)) / 2;
-	my $padded_title = ($padchar x ($padlen - ($padlen % 2))) . " " . $fname . " " . ($padchar x $padlen);
+	next if $sname eq '.' || $sname eq '..';
 
-	say ($padchar x 130);
-	say $padded_title;
-	say ($padchar x 130);
+	$subdir_path = $root_path.'/'.$sname;
+	opendir DIR,$subdir_path;
+	my @fname_list = readdir(DIR);
+	close DIR;
 
-	my ($out, $err) = capture {
-		system("ffmpeg -i \"$dirpath/$fname\" -vf blackdetect=d=0.1:pix_th=.1 -f rawvideo -y /dev/null");
-	};
+	#Create subdirectory in the output folder to correspond to this directory. 
+	mkdir("/mnt/cephfs/output/$sname");
 
-	$length = `ffprobe -i "$dirpath/$fname" -show_format -v quiet | grep duration | cut -d= -f2`;
-	$length =~ s/\n//;
-
-	#Convert carriage returns to newlines
-	$err =~ s/\r/\n/g;
-
-	@lines = split(/\n/, $err);
-	foreach (@lines) {
-		#Parse the timestamp (in seconds) where blackness starts and ends, and how long it lasts
-		$_ =~ /.*black_start:([0-9\.]+) black_end:([0-9\.]+) black_duration:([0-9\.]+)/ || next;
-		my ($start, $end, $duration) = ($1, $2, $3);
-
-		#Skip darkness if in first 5 minutes (theme song), less than 1 second (scene change), or within 4 minutes of end (credits)
-		next if $start < 480;
-		next if	$duration < 0.251; 
-		next if $length - $start < 420;
-		next if ($start - ($breaks[-1]/1000) < 300); #Skip if we just flagged a commercial in the past 5 minutes.  
+	foreach $fname (sort @fname_list) # (sort { $a <=> $b } @fname_list)
+	{
+		next if $fname eq '.' || $fname eq '..';
 		
-		print("Start: $start | End: $end | Duration $duration\n");
-		my $break = $start + (($end-$start)/2);
-		print("Proposed break time: $break\n");
-		push(@breaks, $break*1000); #Chapter data cuts off decimal so we do 1000X and use 1/1000 Timebase
-	}
-	push(@breaks, $length*1000);
+		$start_pct++;
+		$pct = ($start_pct / $total_pct) * 100;
+		$pct_str = "(" .  sprintf("%.1f", $pct) . '%)';
+		my $padchar = '#';
+		my $padlen = (128 - length($fname)) / 2; #128 instead of 130 to account for the two hardcoded spaces in $padded_title
+		my $padded_title = ($padchar x ($padlen - ($padlen % 2))) . " " . $fname . " " . ($padchar x $padlen) . " $pct_str";
 
-	print("\nGenerating metadata file....\n");
-	#Any other name translations needed should be done here. 
-	$newname = $fname;
-	$newname =~ s/^$removestr//;
-	$newname =~ s/\'//g;
-	$newname =~ s/\"//g;
-	$newname =~ s/$oldext//;
-	#$newname =~ s/([0-9]+)x([0-9]+) - (.*)/$3 - s$1e$2/; #Directory-specific transformation to enable ErsatzTV to parse season/episode data
-	print("    Name:     $newname.mp4\n");
-	print("    Chapters: " . join(', ', @breaks) . " \n");
+		say($padchar x 130);
+		say($padded_title);
+		say($padchar x 130);
 
-	if (scalar @breaks == 2)
-	{
-		print("No chapters found in $fname. File will be re-encoded without chapters.\n");
-		system("ffmpeg -v quiet -i \"$dirpath\/$fname\" -codec copy \"./output/$newname.mp4\"");
+		say("Scanning for black frames...");
+		my ($out, $err) = capture {
+			system("ffmpeg -i \"$subdir_path/$fname\" -vf blackdetect=d=0.1:pix_th=.1 -f rawvideo -y /dev/null");
+		};
+
+		$err =~ s/\r/\n/g; #Converting carriage returns to newlines.
+		@lines = split(/\n/, $err);
+
+		$length = `ffprobe -i "$subdir_path/$fname" -show_format -v quiet | grep duration | cut -d= -f2`;
+		$length =~ s/\n//;
+
+		@breaks = ();
+		push(@breaks, 0);
+
+		foreach (@lines) {
+			#Parse the timestamp (in seconds) where blackness starts and ends, and how long it lasts
+			$_ =~ /.*black_start:([0-9\.]+) black_end:([0-9\.]+) black_duration:([0-9\.]+)/ || next;
+			my ($start, $end, $duration) = ($1, $2, $3);
+
+			#Skip darkness if in first 5 minutes (theme song), less than 1 second (scene change), or within 4 minutes of end (credits)
+			next if $start < 480;
+			next if	$duration < 0.251; 
+			next if $length - $start < 420;
+			next if ($start - ($breaks[-1]/1000) < 300); #Skip if we just flagged a commercial in the past 5 minutes.  
+			
+			say("Start: $start | End: $end | Duration $duration");
+			my $break = $start + (($end-$start)/2);
+			say("Proposed break time: $break");
+			push(@breaks, $break*1000); #Chapter data cuts off decimal so we do 1000X and use 1/1000 Timebase
+		}
+		push(@breaks, $length*1000);
+
+		say("\nGenerating metadata file....");
+		#Any other name translations needed should be done here. 
+		$newname = $fname;
+		$newname =~ s/^$removestr//;
+		$newname =~ s/\'//g;
+		$newname =~ s/\"//g;
+		$newname =~ s/$oldext//;
+		#$newname =~ s/([0-9]+)x([0-9]+) - (.*)/$3 - s$1e$2/; #Directory-specific transformation to enable ErsatzTV to parse season/episode data
+		say("    Name:     $newname.mp4");
+		say("    Chapters: " . join(', ', @breaks));
+
+		if (scalar @breaks == 2)
+		{
+			say("\nNo chapters found in $fname. File will be re-encoded without chapters.");
+			system("ffmpeg -v quiet -i \"$subdir_path\/$fname\" -codec copy \"/mnt/cephfs/media-scratch/output/$sname/$newname.mp4\"");
+		}
+		else
+		{
+			say("\nRe-encoding $newname with chapter metadata...");
+			generate_metadata($newname, \@breaks);
+			system("ffmpeg -v quiet -i \"$subdir_path\/$fname\" -i \"./md/$newname.md\" -codec copy -map_metadata 1 -map_chapters 1 \"/mnt/cephfs/media-scratch/output/$sname/$newname.mp4\"");
+		}
+		print("\n");
 	}
-	else
-	{
-		generate_metadata($newname, \@breaks);
-		system("ffmpeg -v quiet -i \"$dirpath\/$fname\" -i \"./md/$newname.md\" -codec copy -map_metadata 1 -map_chapters 1 \"./output/$newname.mp4\"");
-	}
-	print("\n");
 }
 
 sub generate_metadata
